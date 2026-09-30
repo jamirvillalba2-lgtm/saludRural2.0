@@ -1,0 +1,5 @@
+{
+    "scm.compactFolders": true,
+    "explorer.compactFolders": false,
+    "cmake.ignoreCMakeListsMissing": true
+}
