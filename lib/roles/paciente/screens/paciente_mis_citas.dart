@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/citas_local_service.dart';
+import '../../../controllers/cita_controller.dart';
+import '../../../services/api_client.dart';
 import 'paciente_mis_citas_disponibles.dart';
 
 /// ===============================================================
@@ -66,7 +67,9 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
 
   Future<void> _cargarCitas() async {
     try {
-      final citas = await CitasLocalService.obtenerMisCitas();
+      final citas = await citaController.listar(
+        documentoPaciente: widget.cc,
+      );
 
       if (!mounted) return;
 
@@ -74,7 +77,7 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
         _citas = citas;
         _cargando = false;
       });
-    } catch (_) {
+    } on ApiException catch (error) {
       if (!mounted) return;
 
       setState(() {
@@ -83,11 +86,7 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No fue posible cargar tus citas.',
-          ),
-        ),
+        SnackBar(content: Text(error.message)),
       );
     }
   }
@@ -100,7 +99,9 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
     final resultado = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => const PacienteCitasDisponiblesScreen(),
+        builder: (_) => PacienteCitasDisponiblesScreen(
+          documentoPaciente: widget.cc,
+        ),
       ),
     );
 
@@ -118,7 +119,7 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
   Future<void> _reagendarCita(
     Map<String, dynamic> cita,
   ) async {
-    final id = cita['id']?.toString();
+    final id = (cita['id'] ?? cita['_id'])?.toString();
 
     if (id == null || id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -135,6 +136,7 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
       context,
       MaterialPageRoute(
         builder: (_) => PacienteCitasDisponiblesScreen(
+          documentoPaciente: widget.cc,
           citaReagendarId: id,
         ),
       ),
@@ -154,7 +156,7 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
   Future<void> _cancelarCita(
     Map<String, dynamic> cita,
   ) async {
-    final id = cita['id']?.toString();
+    final id = (cita['id'] ?? cita['_id'])?.toString();
 
     if (id == null || id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,16 +210,15 @@ class _PacienteMisCitasState extends State<PacienteMisCitas> {
 
     if (confirmar != true) return;
 
-    await CitasLocalService.cancelarCita(id);
-
-    await CitasLocalService.guardarNotificacion(
-      'Cita cancelada',
-      'La cita de '
-          '${_valor(cita['especialidad'], 'atención médica')} '
-          'del ${_valor(cita['fecha'], 'fecha no registrada')} '
-          'a las ${_valor(cita['hora'], 'hora no registrada')} '
-          'fue cancelada.',
-    );
+    try {
+      await citaController.cancelar(id);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    }
 
     if (!mounted) return;
 

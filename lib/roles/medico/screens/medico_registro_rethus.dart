@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import '../../../controllers/doctor_controller.dart';
+import '../../../services/api_client.dart';
+
 class MedicoRegistroRethus extends StatefulWidget {
   const MedicoRegistroRethus({super.key});
   @override
@@ -13,9 +16,59 @@ class _MedicoRegistroRethusState extends State<MedicoRegistroRethus> {
   File? imagen;
   final nombreCtrl = TextEditingController();
   final rethusCtrl = TextEditingController();
+  final especialidadCtrl = TextEditingController();
   double confianza = 0;
   bool loading = false;
   String textoLeido = "";
+
+  @override
+  void dispose() {
+    nombreCtrl.dispose();
+    rethusCtrl.dispose();
+    especialidadCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _validarConRethus() async {
+    final nombre = nombreCtrl.text.trim();
+    final numeroRethus = rethusCtrl.text.trim();
+    final especialidad = especialidadCtrl.text.trim();
+    if (nombre.isEmpty || numeroRethus.isEmpty || especialidad.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Completa nombre, especialidad y número RETHUS.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => loading = true);
+    try {
+      final response = await doctorController.registrar(
+        nombre: nombre,
+        numeroRethus: numeroRethus,
+        especialidad: especialidad,
+      );
+      if (!mounted) return;
+      final message = response['message']?.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message == null || message.trim().isEmpty
+                ? 'Registro enviado para validación con RETHUS.'
+                : message,
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
 
   Future<void> tomarFoto() async {
     final foto = await ImagePicker()
@@ -80,6 +133,12 @@ class _MedicoRegistroRethusState extends State<MedicoRegistroRethus> {
               decoration: const InputDecoration(
                   labelText: "Número RETHUS / T.P.",
                   border: OutlineInputBorder())),
+          const SizedBox(height: 12),
+          TextField(
+              controller: especialidadCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: "Especialidad", border: OutlineInputBorder())),
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -110,11 +169,7 @@ class _MedicoRegistroRethusState extends State<MedicoRegistroRethus> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content:
-                                Text("Médico ${nombreCtrl.text} validado")));
-                      },
+                      onPressed: _validarConRethus,
                       child: const Text("Validar con RETHUS"))),
         ]),
       ),

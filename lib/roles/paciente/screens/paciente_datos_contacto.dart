@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
+import '../../../controllers/paciente_controller.dart';
+import '../../../services/api_client.dart';
+import '../../../services/ocr_service.dart';
 import 'paciente_dashboard.dart';
 
 class PacienteDatosContacto extends StatefulWidget {
@@ -12,6 +17,11 @@ class PacienteDatosContacto extends StatefulWidget {
   final String sexo;
   final String fechaExpedicion;
   final String lugarExpedicion;
+  final String tipoDocumento;
+  final File? documentoFrente;
+  final File? documentoReverso;
+  final OcrResult? ocrFrente;
+  final OcrResult? ocrReverso;
   final bool aceptoDatos;
 
   const PacienteDatosContacto({
@@ -25,6 +35,11 @@ class PacienteDatosContacto extends StatefulWidget {
     this.sexo = '',
     this.fechaExpedicion = '',
     this.lugarExpedicion = '',
+    this.tipoDocumento = 'Cédula de ciudadanía',
+    this.documentoFrente,
+    this.documentoReverso,
+    this.ocrFrente,
+    this.ocrReverso,
     this.aceptoDatos = false,
   });
 
@@ -113,32 +128,67 @@ class _PacienteDatosContactoState extends State<PacienteDatosContacto> {
       loading = true;
     });
 
-    /*
-     * -------------------------------------------------------------
-     * GUARDADO
-     * -------------------------------------------------------------
-     *
-     * Actualmente el proyecto todavía no conecta este registro
-     * con una base de datos.
-     *
-     * Este retraso simula el proceso de guardado para mantener
-     * funcionando el flujo de la aplicación.
-     *
-     * Cuando conectemos el backend, este bloque será reemplazado
-     * por la petición HTTP correspondiente.
-     */
+    try {
+      await pacienteController.registrar(
+        datos: {
+          'tipoDocumento': widget.tipoDocumento,
+          'documento': widget.cc.trim(),
+          'nombre': widget.nombre.trim(),
+          'fechaNacimiento': widget.fechaNacimiento,
+          'lugarNacimiento': widget.lugarNacimiento,
+          'rh': widget.rh,
+          'estatura': widget.estatura,
+          'sexo': widget.sexo,
+          'fechaExpedicion': widget.fechaExpedicion,
+          'lugarExpedicion': widget.lugarExpedicion,
+          'ocr': {
+            'frente': _datosOcr(widget.ocrFrente),
+            'reverso': _datosOcr(widget.ocrReverso),
+          },
+          'direccion': direccionCtrl.text.trim(),
+          'vereda': veredaCtrl.text.trim(),
+          'municipio': municipioCtrl.text.trim(),
+          'telefono': telefonoCtrl.text.trim(),
+          'correo': correoCtrl.text.trim(),
+          'eps': epsCtrl.text.trim(),
+          'password': passCtrl.text,
+          'autorizacionTratamiento': widget.aceptoDatos,
+        },
+        documentoFrente: widget.documentoFrente,
+        documentoReverso: widget.documentoReverso,
+      );
 
-    await Future.delayed(
-      const Duration(milliseconds: 800),
-    );
+      if (!mounted) return;
+      _entrarAlDashboard();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
 
-    if (!mounted) return;
-
-    setState(() {
-      loading = false;
-    });
-
-    _entrarAlDashboard();
+  Map<String, dynamic>? _datosOcr(OcrResult? resultado) {
+    if (resultado == null) return null;
+    return {
+      'documento': resultado.cc,
+      'nombre': resultado.nombre,
+      'fechaNacimiento': resultado.fechaNac,
+      'lugarNacimiento': resultado.lugarNac,
+      'estatura': resultado.estatura,
+      'rh': resultado.rh,
+      'sexo': resultado.sexo,
+      'fechaExpedicion': resultado.fechaExp,
+      'lugarExpedicion': resultado.lugarExp,
+      'confianza': resultado.confianza,
+      'textoCompleto': resultado.textoCompleto,
+    };
   }
 
   // ---------------------------------------------------------------

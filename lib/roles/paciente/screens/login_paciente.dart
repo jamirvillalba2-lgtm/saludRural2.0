@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../controllers/paciente_controller.dart';
+import '../../../services/api_client.dart';
 import 'paciente_dashboard.dart';
 
 /// Pantalla de inicio de sesión para el paciente rural.
@@ -29,44 +31,63 @@ class _LoginPacienteScreenState extends State<LoginPacienteScreen> {
     super.dispose();
   }
 
-  /// Función para simular o validar el inicio de sesión
-  void login() async {
+  Future<void> login() async {
     if (!_key.currentState!.validate()) return;
 
     setState(() => loading = true);
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final paciente = await pacienteController.iniciarSesion(
+        documento: ccCtrl.text,
+        password: passCtrl.text,
+      );
+      if (!mounted) return;
 
-    // TODO: Validar credenciales con Supabase en el futuro
-    // final res = await Supabase.instance.client.from('pacientes').select().eq('cc', ccCtrl.text).eq('password', passCtrl.text).single();
-
-    if (!mounted) return;
-    setState(() => loading = false);
-
-    // Navegación hacia el Dashboard pasando todos los parámetros requeridos
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PacienteDashboard(
-          nombre: "JAMIR ENRIQUE VILLALBA ORO",
-          cc: ccCtrl.text,
-          direccion: "mz A lote 44",
-          vereda: "Asturias",
-          municipio: "turbaco",
-          telefono: "3205504708",
-          correo:
-              "jamir.villalba@example.com", // <-- Parámetro agregado para evitar errores
-          eps: "salud total",
-          fechaNacimiento: "07-AGO-1995",
-          rh: "O+",
-          sexo: "M",
-          onCerrarSesion: () {
-            // Lógica para regresar al login al cerrar sesión
-            Navigator.popUntil(context, (route) => route.isFirst);
-          }, // <-- Parámetro agregado requerido por el dashboard
+      final documentoRecibido =
+          _valor(paciente, ['documento', 'cc', 'numeroDocumento']);
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PacienteDashboard(
+            nombre: _valor(paciente, ['nombre', 'nombres']).isEmpty
+                ? 'Paciente'
+                : _valor(paciente, ['nombre', 'nombres']),
+            cc: documentoRecibido.isEmpty
+                ? ccCtrl.text.trim()
+                : documentoRecibido,
+            direccion: _valor(paciente, ['direccion']),
+            vereda: _valor(paciente, ['vereda']),
+            municipio: _valor(paciente, ['municipio']),
+            telefono: _valor(paciente, ['telefono', 'celular']),
+            correo: _valor(paciente, ['correo', 'email']),
+            eps: _valor(paciente, ['eps']),
+            fechaNacimiento: _valor(paciente, ['fechaNacimiento']),
+            rh: _valor(paciente, ['rh']),
+            sexo: _valor(paciente, ['sexo']),
+            onCerrarSesion: () {
+              Navigator.popUntil(context, (route) => route.isFirst);
+            },
+          ),
         ),
-      ),
-      (r) => false,
-    );
+        (route) => false,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  String _valor(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return '';
   }
 
   @override

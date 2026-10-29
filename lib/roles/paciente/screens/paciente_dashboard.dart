@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/citas_local_service.dart';
+import '../../../controllers/cita_controller.dart';
+import '../../../services/api_client.dart';
 import 'login_paciente.dart';
 import 'paciente_mis_citas.dart';
 import 'paciente_mis_citas_disponibles.dart';
@@ -71,9 +72,10 @@ class _PacienteDashboardState extends State<PacienteDashboard> {
   // ===============================================================
 
   List<Map<String, dynamic>> _misCitas = [];
-  List<Map<String, dynamic>> _notificaciones = [];
+  final List<Map<String, dynamic>> _notificaciones = [];
 
   bool _cargando = true;
+  String? _errorCarga;
 
   // ===============================================================
   // DATOS DERIVADOS
@@ -107,24 +109,27 @@ class _PacienteDashboardState extends State<PacienteDashboard> {
 
   Future<void> _cargarDatos() async {
     try {
-      final citas = await CitasLocalService.obtenerMisCitas();
-      final notificaciones = await CitasLocalService.obtenerNotificaciones();
+      final citas = await citaController.listar(
+        documentoPaciente: widget.cc,
+      );
 
       if (!mounted) return;
 
       setState(() {
         _misCitas = citas;
-        _notificaciones = notificaciones;
+        _errorCarga = null;
         _cargando = false;
       });
-    } catch (_) {
+    } on ApiException catch (error) {
       if (!mounted) return;
 
       setState(() {
-        _misCitas = [];
-        _notificaciones = [];
+        _errorCarga = error.message;
         _cargando = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     }
   } // ===============================================================
   // BUILD PRINCIPAL
@@ -146,6 +151,10 @@ class _PacienteDashboardState extends State<PacienteDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildWelcome(),
+                if (_errorCarga != null) ...[
+                  const SizedBox(height: 12),
+                  _buildLoadError(),
+                ],
                 const SizedBox(height: 20),
                 _buildAgendarPrincipal(),
                 const SizedBox(height: 22),
@@ -172,6 +181,29 @@ class _PacienteDashboardState extends State<PacienteDashboard> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoadError() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_outlined, color: Color(0xFF9A6700)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'No se pudieron cargar tus citas: $_errorCarga',
+              style: const TextStyle(color: Color(0xFF6D4C00)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -966,7 +998,9 @@ class _PacienteDashboardState extends State<PacienteDashboard> {
     final resultado = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => const PacienteCitasDisponiblesScreen(),
+        builder: (_) => PacienteCitasDisponiblesScreen(
+          documentoPaciente: widget.cc,
+        ),
       ),
     );
 

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../services/citas_local_service.dart';
+import '../../../controllers/cita_controller.dart';
+import '../../../controllers/doctor_controller.dart';
+import '../../../services/api_client.dart';
 
 class PacienteCitasDisponiblesScreen extends StatefulWidget {
+  final String documentoPaciente;
   final String? citaReagendarId;
 
   const PacienteCitasDisponiblesScreen({
     super.key,
+    required this.documentoPaciente,
     this.citaReagendarId,
   });
 
@@ -18,233 +22,192 @@ class PacienteCitasDisponiblesScreen extends StatefulWidget {
 class _PacienteCitasDisponiblesScreenState
     extends State<PacienteCitasDisponiblesScreen> {
   static const Color verde = Color(0xFF0E7C57);
-  static const Color verdeClaro = Color(0xFFE8F5EF);
 
-  String especialidad = 'Medicina general';
-  String sede = 'Todas las sedes';
-  String fecha = '';
-
-  bool mostrandoCercanas = false;
-
-  List<Map<String, String>> resultados = [];
+  List<Map<String, dynamic>> _doctores = [];
+  List<String> _especialidades = [];
+  String? _especialidad;
+  String? _doctorId;
+  DateTime? _fecha;
+  TimeOfDay? _hora;
+  bool _cargandoDoctores = true;
+  bool _enviando = false;
+  String? _errorCarga;
 
   @override
   void initState() {
     super.initState();
-    _buscar();
+    _cargarEspecialidades();
   }
 
-  void _buscar() {
-    setState(() {
-      mostrandoCercanas = false;
-
-      resultados = CitasLocalService.buscarDisponibilidades(
-        especialidad: especialidad,
-        sede: sede,
-        fecha: fecha,
-      );
-    });
-  }
-
-  void _buscarCercanas() {
-    setState(() {
-      mostrandoCercanas = true;
-
-      resultados = CitasLocalService.obtenerCitasCercanas(
-        especialidad: especialidad,
-      );
-    });
-  }
-
-  Future<void> _seleccionarCita(
-    Map<String, String> cita,
-  ) async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Confirmar cita',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _detalle('Especialidad', cita['especialidad']!),
-              _detalle('Profesional', cita['medico']!),
-              _detalle('Fecha', cita['fecha']!),
-              _detalle('Hora', cita['hora']!),
-              _detalle('Sede', cita['sede']!),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: verde,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confirmar cita'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmar != true || !mounted) {
-      return;
-    }
-
-    if (widget.citaReagendarId != null) {
-      await CitasLocalService.reagendarCita(
-        idAnterior: widget.citaReagendarId!,
-        nuevaCita: cita,
-      );
-
-      await CitasLocalService.guardarNotificacion(
-        'Cita reagendada',
-        '${cita['especialidad']} con ${cita['medico']} '
-            'el ${cita['fecha']} a las ${cita['hora']}.',
-      );
-
+  Future<void> _cargarEspecialidades() async {
+    try {
+      final doctores = await doctorController.listar();
+      final especialidades = doctores
+          .map((doctor) => _valor(doctor, ['especialidad']))
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
       if (!mounted) return;
+      setState(() {
+        _especialidades = especialidades;
+        _especialidad = especialidades.isEmpty ? null : especialidades.first;
+        _doctores = doctores;
+        _cargandoDoctores = false;
+        _errorCarga = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoDoctores = false;
+        _errorCarga = error.message;
+      });
+      _mostrarError(error.message);
+    }
+  }
 
-      _mostrarResultado(
-        'Cita reagendada',
-        'Tu nueva cita fue registrada correctamente.',
-      );
+  Future<void> _cargarDoctoresPorEspecialidad(String especialidad) async {
+    setState(() {
+      _cargandoDoctores = true;
+      _doctorId = null;
+      _doctores = [];
+    });
+    try {
+      final doctores =
+          await doctorController.listar(especialidad: especialidad);
+      if (!mounted) return;
+      setState(() {
+        _doctores = doctores;
+        _cargandoDoctores = false;
+        _errorCarga = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _cargandoDoctores = false;
+        _errorCarga = error.message;
+      });
+      _mostrarError(error.message);
+    }
+  }
 
+  Future<void> _seleccionarFecha() async {
+    final ahora = DateTime.now();
+    final seleccionada = await showDatePicker(
+      context: context,
+      firstDate: DateTime(ahora.year, ahora.month, ahora.day),
+      lastDate: ahora.add(const Duration(days: 180)),
+      initialDate: _fecha ?? ahora,
+    );
+    if (seleccionada != null) {
+      setState(() => _fecha = seleccionada);
+    }
+  }
+
+  Future<void> _seleccionarHora() async {
+    final seleccionada = await showTimePicker(
+      context: context,
+      initialTime: _hora ?? TimeOfDay.now(),
+    );
+    if (seleccionada != null) {
+      setState(() => _hora = seleccionada);
+    }
+  }
+
+  Future<void> _confirmarCita() async {
+    if (_doctorId == null || _fecha == null || _hora == null) {
+      _mostrarError('Selecciona el profesional, la fecha y la hora.');
       return;
     }
 
-    await CitasLocalService.guardarCita(cita);
-
-    await CitasLocalService.guardarNotificacion(
-      'Cita confirmada',
-      '${cita['especialidad']} con ${cita['medico']} '
-          'el ${cita['fecha']} a las ${cita['hora']}.',
+    final doctor = _doctores.firstWhere(
+      (item) => _idDoctor(item) == _doctorId,
     );
+    final datos = <String, dynamic>{
+      'documentoPaciente': widget.documentoPaciente,
+      'doctorId': _doctorId,
+      'medico': _valor(doctor, ['nombre', 'nombreCompleto']),
+      'especialidad': _valor(doctor, ['especialidad']),
+      'sede': _valor(doctor, ['sede', 'centroSalud']),
+      'fecha': _fechaIso(_fecha!),
+      'hora': '${_hora!.hour.toString().padLeft(2, '0')}:'
+          '${_hora!.minute.toString().padLeft(2, '0')}',
+    };
 
-    if (!mounted) return;
-
-    _mostrarResultado(
-      'Cita apartada',
-      'Tu cita fue registrada correctamente.',
-    );
+    setState(() => _enviando = true);
+    try {
+      final id = widget.citaReagendarId;
+      if (id == null) {
+        await citaController.crear(datos);
+      } else {
+        await citaController.actualizar(id, datos);
+      }
+      if (!mounted) return;
+      _mostrarResultado();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _mostrarError(error.message);
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
   }
 
-  void _mostrarResultado(
-    String titulo,
-    String mensaje,
-  ) {
+  void _mostrarResultado() {
     showDialog<void>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          icon: const Icon(
-            Icons.check_circle_rounded,
-            color: verde,
-            size: 50,
-          ),
-          title: Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          content: Text(
-            mensaje,
-            textAlign: TextAlign.center,
-          ),
-          actions: [
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: verde,
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context, true);
-              },
-              child: const Text('Continuar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _detalle(String titulo, String valor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              titulo,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 6,
-            child: Text(
-              valor,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.check_circle, color: verde, size: 48),
+        title: Text(
+          widget.citaReagendarId == null ? 'Cita agendada' : 'Cita reagendada',
+        ),
+        content: const Text(
+          'El servidor confirmó el horario y registró la cita.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pop(context, true);
+            },
+            child: const Text('Continuar'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _seleccionarFecha() async {
-    final ahora = DateTime.now();
+  String _idDoctor(Map<String, dynamic> doctor) {
+    return _valor(doctor, ['id', '_id', 'doctorId']);
+  }
 
-    final fechaSeleccionada = await showDatePicker(
-      context: context,
-      firstDate: ahora,
-      lastDate: ahora.add(
-        const Duration(days: 90),
-      ),
-      initialDate: ahora,
-    );
-
-    if (fechaSeleccionada == null) {
-      return;
+  String _valor(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
     }
+    return '';
+  }
 
-    final dia = fechaSeleccionada.day.toString().padLeft(2, '0');
+  String _fechaIso(DateTime fecha) {
+    return '${fecha.year.toString().padLeft(4, '0')}-'
+        '${fecha.month.toString().padLeft(2, '0')}-'
+        '${fecha.day.toString().padLeft(2, '0')}';
+  }
 
-    final mes = fechaSeleccionada.month.toString().padLeft(2, '0');
-
-    setState(() {
-      fecha = '$dia/$mes/${fechaSeleccionada.year}';
-    });
-
-    _buscar();
+  void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final doctorSeleccionado = _doctores.where(
+      (doctor) => _idDoctor(doctor) == _doctorId,
+    );
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8F7),
       appBar: AppBar(
@@ -254,395 +217,150 @@ class _PacienteCitasDisponiblesScreenState
           widget.citaReagendarId == null ? 'Agendar cita' : 'Reagendar cita',
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _encabezado(),
-            const SizedBox(height: 18),
-            _filtros(),
-            const SizedBox(height: 22),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Citas disponibles',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+      body: _cargandoDoctores
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _cargarEspecialidades,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(18),
+                children: [
+                  const Text(
+                    'Elige profesional y horario',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
-                ),
-                Text(
-                  '${resultados.length} disponibles',
-                  style: const TextStyle(
-                    color: verde,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 8),
+                  const Text(
+                    'La disponibilidad se valida en el servidor al guardar. '
+                    'Si alguien toma el horario primero, podrás elegir otro.',
+                    style: TextStyle(color: Colors.black54, height: 1.4),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (resultados.isEmpty)
-              _sinResultados()
-            else
-              ...resultados.map(_tarjetaCita),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _encabezado() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: verde,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.calendar_month_rounded,
-            color: Colors.white,
-            size: 35,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'Encuentra tu cita',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 23,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          SizedBox(height: 5),
-          Text(
-            'Selecciona la especialidad y consulta las '
-            'citas disponibles por fecha y sede.',
-            style: TextStyle(
-              color: Colors.white70,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filtros() {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Buscar cita',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 15),
-            DropdownButtonFormField<String>(
-              initialValue: especialidad,
-              decoration: const InputDecoration(
-                labelText: 'Especialidad',
-                prefixIcon: Icon(
-                  Icons.medical_services_outlined,
-                ),
-                border: OutlineInputBorder(),
-              ),
-              items: CitasLocalService.especialidades
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (valor) {
-                if (valor == null) return;
-
-                setState(() {
-                  especialidad = valor;
-                  fecha = '';
-                });
-
-                _buscar();
-              },
-            ),
-            const SizedBox(height: 13),
-            DropdownButtonFormField<String>(
-              initialValue: sede,
-              decoration: const InputDecoration(
-                labelText: 'Sede',
-                prefixIcon: Icon(
-                  Icons.location_on_outlined,
-                ),
-                border: OutlineInputBorder(),
-              ),
-              items: CitasLocalService.sedes
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item,
-                      child: Text(
-                        item,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (valor) {
-                if (valor == null) return;
-
-                setState(() {
-                  sede = valor;
-                });
-
-                _buscar();
-              },
-            ),
-            const SizedBox(height: 13),
-            InkWell(
-              onTap: _seleccionarFecha,
-              borderRadius: BorderRadius.circular(12),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Fecha',
-                  prefixIcon: Icon(
-                    Icons.calendar_today_outlined,
-                  ),
-                  border: OutlineInputBorder(),
-                ),
-                child: Text(
-                  fecha.isEmpty ? 'Todas las fechas' : fecha,
-                ),
-              ),
-            ),
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _buscar,
-                    icon: const Icon(Icons.search),
-                    label: const Text('Buscar cita'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _buscarCercanas,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: verde,
-                    ),
-                    icon: const Icon(
-                      Icons.near_me_outlined,
-                    ),
-                    label: const Text('Más cercana'),
-                  ),
-                ),
-              ],
-            ),
-            if (mostrandoCercanas) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: verdeClaro,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: verde,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Mostrando las primeras opciones '
-                        'disponibles para esta especialidad.',
-                        style: TextStyle(
-                          color: verde,
-                          fontSize: 12,
+                  const SizedBox(height: 20),
+                  if (_errorCarga != null)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.cloud_off, color: Colors.red),
+                        title: Text(_errorCarga!),
+                        trailing: IconButton(
+                          onPressed: _cargarEspecialidades,
+                          icon: const Icon(Icons.refresh),
                         ),
                       ),
                     ),
+                  if (_especialidades.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(_especialidad),
+                      initialValue: _especialidad,
+                      decoration: const InputDecoration(
+                        labelText: 'Especialidad',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _especialidades
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _especialidad = value);
+                        _cargarDoctoresPorEspecialidad(value);
+                      },
+                    ),
+                    const SizedBox(height: 14),
                   ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tarjetaCita(Map<String, String> cita) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFE5E7EB),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: verdeClaro,
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: const Icon(
-                  Icons.event_available_rounded,
-                  color: verde,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  cita['especialidad']!,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
+                  if (_doctores.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(_doctorId),
+                      initialValue: _doctorId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Profesional',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _doctores
+                          .map((doctor) {
+                            final id = _idDoctor(doctor);
+                            final nombre = _valor(
+                              doctor,
+                              ['nombre', 'nombreCompleto'],
+                            );
+                            return DropdownMenuItem(
+                              value: id,
+                              child: Text(
+                                nombre.isEmpty ? 'Profesional $id' : nombre,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          })
+                          .where((item) => item.value?.isNotEmpty ?? false)
+                          .toList(),
+                      onChanged: (value) => setState(() => _doctorId = value),
+                    )
+                  else
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No hay profesionales para mostrar.'),
+                      ),
+                    ),
+                  if (doctorSeleccionado.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Especialidad: ${_valor(doctorSeleccionado.first, [
+                            'especialidad'
+                          ])}',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  OutlinedButton.icon(
+                    onPressed: _seleccionarFecha,
+                    icon: const Icon(Icons.calendar_today),
+                    label: Text(
+                      _fecha == null
+                          ? 'Seleccionar fecha'
+                          : '${_fecha!.day.toString().padLeft(2, '0')}/'
+                              '${_fecha!.month.toString().padLeft(2, '0')}/'
+                              '${_fecha!.year}',
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          _fila(
-            Icons.person_outline,
-            'Profesional',
-            cita['medico']!,
-          ),
-          _fila(
-            Icons.calendar_today_outlined,
-            'Fecha',
-            cita['fecha']!,
-          ),
-          _fila(
-            Icons.access_time_outlined,
-            'Hora',
-            cita['hora']!,
-          ),
-          _fila(
-            Icons.location_on_outlined,
-            'Sede',
-            cita['sede']!,
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => _seleccionarCita(cita),
-              style: FilledButton.styleFrom(
-                backgroundColor: verde,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 13,
-                ),
-              ),
-              child: Text(
-                widget.citaReagendarId == null
-                    ? 'Seleccionar cita'
-                    : 'Seleccionar nueva cita',
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _seleccionarHora,
+                    icon: const Icon(Icons.access_time),
+                    label: Text(
+                      _hora?.format(context) ?? 'Seleccionar hora',
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed:
+                        _enviando || _doctores.isEmpty ? null : _confirmarCita,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: verde,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                    child: _enviando
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            widget.citaReagendarId == null
+                                ? 'Confirmar cita'
+                                : 'Guardar nuevo horario',
+                          ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _fila(
-    IconData icon,
-    String titulo,
-    String valor,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 19,
-            color: verde,
-          ),
-          const SizedBox(width: 9),
-          Text(
-            '$titulo: ',
-            style: const TextStyle(
-              color: Colors.grey,
-              fontSize: 13,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              valor,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sinResultados() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Column(
-        children: [
-          Icon(
-            Icons.event_busy_outlined,
-            size: 55,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'No encontramos citas disponibles',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            'Prueba otra fecha, sede o especialidad.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

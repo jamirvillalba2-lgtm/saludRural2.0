@@ -1,18 +1,34 @@
-# salud_rural
+# Salud Rural
 
-A new Flutter project.
+## Conexión con el backend
 
-## Getting Started
+La app consume una API REST con base predeterminada
+`http://10.0.2.2:3000/api` para un emulador Android. Para un dispositivo físico
+o para iOS, configura la IP/host que pueda alcanzar el dispositivo:
 
-This project is a starting point for a Flutter application.
+```powershell
+flutter run --dart-define=API_BASE_URL=http://192.168.1.20:3000/api
+```
 
-A few resources to get you started if this is your first Flutter project:
+La URL debe terminar en `/api`. En producción utiliza HTTPS y elimina las
+excepciones de tráfico HTTP de `AndroidManifest.xml` y `ios/Runner/Info.plist`.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+El cliente Flutter realiza estas operaciones:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-"# saludRural_flutter" 
+- `POST /pacientes/registro` envía los datos de identidad y contacto, contraseña,
+  autorización, estructura OCR (`ocr.frente` y `ocr.reverso`) e imágenes del
+  documento en Base64 (`imagenesDocumento.frente/reverso`).
+- `POST /pacientes/login` envía `documento` y `password`.
+- `GET /doctores?especialidad=...` lista los médicos; el parámetro es opcional.
+- `POST /doctores/registro` envía `nombre`, `especialidad` y `numeroRethus`.
+- `GET /citas?documentoPaciente=...` lista las citas del paciente.
+- `POST /citas` crea una cita. `PUT /citas/:id` actualiza/reagenda y
+  `DELETE /citas/:id` la cancela.
+
+El backend debe aceptar JSON UTF-8 y responder con JSON; para las imágenes en
+Base64, configura el límite del parser JSON de Express de acuerdo con el tamaño
+máximo de los documentos. Al responder `409 Conflict` al agendar o reagendar,
+se muestra un mensaje indicando que el horario ya no está disponible.
+
+La aplicación no guarda credenciales, citas ni datos para uso sin conexión.
+Los listados se vuelven a consultar al actualizar las pantallas.

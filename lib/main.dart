@@ -36,6 +36,7 @@ class SaludRuralApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: primaryColor,
+          primary: primaryColor,
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: backgroundColor,
@@ -53,12 +54,10 @@ class SaludRuralApp extends StatelessWidget {
 class AuthWelcomeScreen extends StatelessWidget {
   const AuthWelcomeScreen({super.key});
 
-  static const Color primaryColor = Color(0xFF0E7C57);
-  static const Color textColor = Color(0xFF26332E);
-  static const Color secondaryTextColor = Color(0xFF71807A);
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       body: SafeArea(
         child: Container(
@@ -78,21 +77,19 @@ class AuthWelcomeScreen extends StatelessWidget {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 500,
-                ),
+                constraints: const BoxConstraints(maxWidth: 500),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const _Logo(),
                     const SizedBox(height: 28),
-                    const Text(
+                    Text(
                       'Salud Rural',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 34,
                         fontWeight: FontWeight.bold,
-                        color: primaryColor,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -101,7 +98,7 @@ class AuthWelcomeScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
-                        color: secondaryTextColor,
+                        color: Color(0xFF71807A),
                       ),
                     ),
                     const SizedBox(height: 40),
@@ -182,12 +179,10 @@ class _WelcomeCard extends StatelessWidget {
   final VoidCallback onCreateAccount;
   final VoidCallback onForgotPassword;
 
-  static const Color primaryColor = Color(0xFF0E7C57);
-  static const Color textColor = Color(0xFF26332E);
-  static const Color secondaryTextColor = Color(0xFF71807A);
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -209,7 +204,7 @@ class _WelcomeCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: textColor,
+              color: Color(0xFF26332E),
             ),
           ),
           const SizedBox(height: 8),
@@ -218,7 +213,7 @@ class _WelcomeCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
-              color: secondaryTextColor,
+              color: Color(0xFF71807A),
             ),
           ),
           const SizedBox(height: 28),
@@ -236,7 +231,7 @@ class _WelcomeCard extends StatelessWidget {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
+                backgroundColor: theme.colorScheme.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -251,9 +246,7 @@ class _WelcomeCard extends StatelessWidget {
             height: 54,
             child: OutlinedButton.icon(
               onPressed: onCreateAccount,
-              icon: const Icon(
-                Icons.person_add_alt_1_rounded,
-              ),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
               label: const Text(
                 'CREAR CUENTA',
                 style: TextStyle(
@@ -262,9 +255,9 @@ class _WelcomeCard extends StatelessWidget {
                 ),
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: primaryColor,
-                side: const BorderSide(
-                  color: primaryColor,
+                foregroundColor: theme.colorScheme.primary,
+                side: BorderSide(
+                  color: theme.colorScheme.primary,
                   width: 1.5,
                 ),
                 shape: RoundedRectangleBorder(
@@ -276,9 +269,7 @@ class _WelcomeCard extends StatelessWidget {
           const SizedBox(height: 18),
           TextButton(
             onPressed: onForgotPassword,
-            child: const Text(
-              '¿Olvidaste tu contraseña?',
-            ),
+            child: const Text('¿Olvidaste tu contraseña?'),
           ),
         ],
       ),
@@ -295,6 +286,8 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       width: 110,
       height: 110,
@@ -315,10 +308,10 @@ class _Logo extends StatelessWidget {
           'assets/logo.png',
           fit: BoxFit.contain,
           errorBuilder: (_, __, ___) {
-            return const Icon(
+            return Icon(
               Icons.local_hospital_rounded,
               size: 58,
-              color: Color(0xFF0E7C57),
+              color: theme.colorScheme.primary,
             );
           },
         ),
@@ -334,17 +327,15 @@ class _Logo extends StatelessWidget {
 class RoleSelector extends StatelessWidget {
   const RoleSelector({super.key});
 
-  static const Color primaryColor = Color(0xFF0E7C57);
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Crear cuenta',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -355,10 +346,10 @@ class RoleSelector extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 15),
-              const Icon(
+              Icon(
                 Icons.group_rounded,
                 size: 70,
-                color: primaryColor,
+                color: theme.colorScheme.primary,
               ),
               const SizedBox(height: 20),
               const Text(
@@ -388,7 +379,7 @@ class RoleSelector extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => PacienteRegistroOcrScreen(),
+                      builder: (_) => const PacienteRegistroOcrScreen(),
                     ),
                   );
                 },
@@ -446,10 +437,10 @@ class _RoleButton extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  static const Color primaryColor = Color(0xFF0E7C57);
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(20),
@@ -483,7 +474,7 @@ class _RoleButton extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: primaryColor,
+                  color: theme.colorScheme.primary,
                   size: 30,
                 ),
               ),
@@ -513,10 +504,10 @@ class _RoleButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 18,
-                color: primaryColor,
+                color: theme.colorScheme.primary,
               ),
             ],
           ),
