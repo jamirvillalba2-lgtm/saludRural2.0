@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../controllers/cita_controller.dart';
-import '../../../controllers/doctor_controller.dart';
 import '../../../services/api_client.dart';
 
+/// Pantalla para consultar y reservar citas médicas publicadas por el hospital.
 class PacienteCitasDisponiblesScreen extends StatefulWidget {
   final String documentoPaciente;
   final String? citaReagendarId;
@@ -21,150 +21,93 @@ class PacienteCitasDisponiblesScreen extends StatefulWidget {
 
 class _PacienteCitasDisponiblesScreenState
     extends State<PacienteCitasDisponiblesScreen> {
-  static const Color verde = Color(0xFF0E7C57);
+  static const Color _colorVerdeInstitucional = Color(0xFF0E7C57);
 
-  List<Map<String, dynamic>> _doctores = [];
-  List<String> _especialidades = [];
-  String? _especialidad;
-  String? _doctorId;
-  DateTime? _fecha;
-  TimeOfDay? _hora;
-  bool _cargandoDoctores = true;
-  bool _enviando = false;
+  static const List<String> _especialidades = [
+    'Medicina General',
+    'Pediatría',
+    'Ginecología',
+    'Medicina Interna',
+  ];
+
+  String? _especialidadSeleccionada;
+  List<Map<String, dynamic>> _citasDisponibles = [];
+
+  bool _cargando = false;
+  bool _reservando = false;
   String? _errorCarga;
 
   @override
   void initState() {
     super.initState();
-    _cargarEspecialidades();
+    _especialidadSeleccionada = _especialidades.first;
+    _buscarCitasDisponibles();
   }
 
-  Future<void> _cargarEspecialidades() async {
-    try {
-      final doctores = await doctorController.listar();
-      final especialidades = doctores
-          .map((doctor) => _valor(doctor, ['especialidad']))
-          .where((value) => value.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      if (!mounted) return;
-      setState(() {
-        _especialidades = especialidades;
-        _especialidad = especialidades.isEmpty ? null : especialidades.first;
-        _doctores = doctores;
-        _cargandoDoctores = false;
-        _errorCarga = null;
-      });
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _cargandoDoctores = false;
-        _errorCarga = error.message;
-      });
-      _mostrarError(error.message);
-    }
-  }
-
-  Future<void> _cargarDoctoresPorEspecialidad(String especialidad) async {
+  Future<void> _buscarCitasDisponibles() async {
     setState(() {
-      _cargandoDoctores = true;
-      _doctorId = null;
-      _doctores = [];
+      _cargando = true;
+      _errorCarga = null;
     });
+
     try {
-      final doctores =
-          await doctorController.listar(especialidad: especialidad);
+      final resultado = await citaController.listarDisponibles(
+        especialidad: _especialidadSeleccionada,
+      );
+
       if (!mounted) return;
       setState(() {
-        _doctores = doctores;
-        _cargandoDoctores = false;
-        _errorCarga = null;
+        _citasDisponibles = resultado;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _cargandoDoctores = false;
         _errorCarga = error.message;
       });
-      _mostrarError(error.message);
+      _mostrarMensaje(error.message, esError: true);
+    } finally {
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
-  Future<void> _seleccionarFecha() async {
-    final ahora = DateTime.now();
-    final seleccionada = await showDatePicker(
-      context: context,
-      firstDate: DateTime(ahora.year, ahora.month, ahora.day),
-      lastDate: ahora.add(const Duration(days: 180)),
-      initialDate: _fecha ?? ahora,
-    );
-    if (seleccionada != null) {
-      setState(() => _fecha = seleccionada);
-    }
-  }
-
-  Future<void> _seleccionarHora() async {
-    final seleccionada = await showTimePicker(
-      context: context,
-      initialTime: _hora ?? TimeOfDay.now(),
-    );
-    if (seleccionada != null) {
-      setState(() => _hora = seleccionada);
-    }
-  }
-
-  Future<void> _confirmarCita() async {
-    if (_doctorId == null || _fecha == null || _hora == null) {
-      _mostrarError('Selecciona el profesional, la fecha y la hora.');
-      return;
-    }
-
-    final doctor = _doctores.firstWhere(
-      (item) => _idDoctor(item) == _doctorId,
-    );
-    final datos = <String, dynamic>{
-      'documentoPaciente': widget.documentoPaciente,
-      'doctorId': _doctorId,
-      'medico': _valor(doctor, ['nombre', 'nombreCompleto']),
-      'especialidad': _valor(doctor, ['especialidad']),
-      'sede': _valor(doctor, ['sede', 'centroSalud']),
-      'fecha': _fechaIso(_fecha!),
-      'hora': '${_hora!.hour.toString().padLeft(2, '0')}:'
-          '${_hora!.minute.toString().padLeft(2, '0')}',
-    };
-
-    setState(() => _enviando = true);
+  Future<void> _reservarCita(String citaId) async {
+    if (citaId.isEmpty || _reservando) return;
+    setState(() => _reservando = true);
     try {
-      final id = widget.citaReagendarId;
-      if (id == null) {
-        await citaController.crear(datos);
-      } else {
-        await citaController.actualizar(id, datos);
-      }
+      await citaController.reservar(citaId, widget.documentoPaciente);
       if (!mounted) return;
-      _mostrarResultado();
+      _mostrarDialogoExito();
     } on ApiException catch (error) {
       if (!mounted) return;
-      _mostrarError(error.message);
+      _mostrarMensaje(error.message, esError: true);
     } finally {
-      if (mounted) setState(() => _enviando = false);
+      if (mounted) setState(() => _reservando = false);
     }
   }
 
-  void _mostrarResultado() {
+  void _mostrarDialogoExito() {
     showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: verde, size: 48),
+        icon: const Icon(
+          Icons.check_circle,
+          color: _colorVerdeInstitucional,
+          size: 48,
+        ),
         title: Text(
-          widget.citaReagendarId == null ? 'Cita agendada' : 'Cita reagendada',
+          widget.citaReagendarId == null
+              ? '¡Cita Reservada!'
+              : '¡Cita Reagendada!',
         ),
         content: const Text(
-          'El servidor confirmó el horario y registró la cita.',
+          'Tu cita quedó reservada correctamente.',
         ),
         actions: [
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: _colorVerdeInstitucional,
+            ),
             onPressed: () {
               Navigator.pop(dialogContext);
               Navigator.pop(context, true);
@@ -176,191 +119,194 @@ class _PacienteCitasDisponiblesScreenState
     );
   }
 
-  String _idDoctor(Map<String, dynamic> doctor) {
-    return _valor(doctor, ['id', '_id', 'doctorId']);
-  }
-
-  String _valor(Map<String, dynamic> data, List<String> keys) {
-    for (final key in keys) {
-      final value = data[key];
-      if (value != null && value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    }
-    return '';
-  }
-
-  String _fechaIso(DateTime fecha) {
-    return '${fecha.year.toString().padLeft(4, '0')}-'
-        '${fecha.month.toString().padLeft(2, '0')}-'
-        '${fecha.day.toString().padLeft(2, '0')}';
-  }
-
-  void _mostrarError(String mensaje) {
+  void _mostrarMensaje(String mensaje, {bool esError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje)),
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: esError ? Colors.redAccent : _colorVerdeInstitucional,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final doctorSeleccionado = _doctores.where(
-      (doctor) => _idDoctor(doctor) == _doctorId,
-    );
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8F7),
       appBar: AppBar(
-        backgroundColor: verde,
+        backgroundColor: _colorVerdeInstitucional,
         foregroundColor: Colors.white,
         title: Text(
-          widget.citaReagendarId == null ? 'Agendar cita' : 'Reagendar cita',
+          widget.citaReagendarId == null
+              ? 'Buscar Citas Disponibles'
+              : 'Reagendar Cita',
         ),
       ),
-      body: _cargandoDoctores
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _cargarEspecialidades,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(18),
-                children: [
-                  const Text(
-                    'Elige profesional y horario',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'La disponibilidad se valida en el servidor al guardar. '
-                    'Si alguien toma el horario primero, podrás elegir otro.',
-                    style: TextStyle(color: Colors.black54, height: 1.4),
-                  ),
-                  const SizedBox(height: 20),
-                  if (_errorCarga != null)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.cloud_off, color: Colors.red),
-                        title: Text(_errorCarga!),
-                        trailing: IconButton(
-                          onPressed: _cargarEspecialidades,
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      ),
+      body: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Filtro por Especialidad',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _especialidadSeleccionada,
+                    decoration: const InputDecoration(
+                      labelText: 'Seleccione especialidad',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Colors.white,
                     ),
-                  if (_especialidades.isNotEmpty) ...[
-                    DropdownButtonFormField<String>(
-                      key: ValueKey(_especialidad),
-                      initialValue: _especialidad,
-                      decoration: const InputDecoration(
-                        labelText: 'Especialidad',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _especialidades
-                          .map(
-                            (item) => DropdownMenuItem(
-                              value: item,
-                              child: Text(item),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _especialidad = value);
-                        _cargarDoctoresPorEspecialidad(value);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  if (_doctores.isNotEmpty)
-                    DropdownButtonFormField<String>(
-                      key: ValueKey(_doctorId),
-                      initialValue: _doctorId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Profesional',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _doctores
-                          .map((doctor) {
-                            final id = _idDoctor(doctor);
-                            final nombre = _valor(
-                              doctor,
-                              ['nombre', 'nombreCompleto'],
-                            );
-                            return DropdownMenuItem(
-                              value: id,
-                              child: Text(
-                                nombre.isEmpty ? 'Profesional $id' : nombre,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          })
-                          .where((item) => item.value?.isNotEmpty ?? false)
-                          .toList(),
-                      onChanged: (value) => setState(() => _doctorId = value),
-                    )
-                  else
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No hay profesionales para mostrar.'),
-                      ),
-                    ),
-                  if (doctorSeleccionado.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Especialidad: ${_valor(doctorSeleccionado.first, [
-                            'especialidad'
-                          ])}',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  OutlinedButton.icon(
-                    onPressed: _seleccionarFecha,
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      _fecha == null
-                          ? 'Seleccionar fecha'
-                          : '${_fecha!.day.toString().padLeft(2, '0')}/'
-                              '${_fecha!.month.toString().padLeft(2, '0')}/'
-                              '${_fecha!.year}',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _seleccionarHora,
-                    icon: const Icon(Icons.access_time),
-                    label: Text(
-                      _hora?.format(context) ?? 'Seleccionar hora',
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed:
-                        _enviando || _doctores.isEmpty ? null : _confirmarCita,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: verde,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                    ),
-                    child: _enviando
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            widget.citaReagendarId == null
-                                ? 'Confirmar cita'
-                                : 'Guardar nuevo horario',
+                    items: _especialidades
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item),
                           ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _especialidadSeleccionada = value);
+                    },
                   ),
-                ],
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _colorVerdeInstitucional,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                  ),
+                  onPressed: _cargando ? null : _buscarCitasDisponibles,
+                  icon: const Icon(Icons.search),
+                  label: const Text('Buscar'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Horarios disponibles publicados',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
               ),
             ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: _cargando
+                  ? const Center(child: CircularProgressIndicator())
+                  : _errorCarga != null
+                      ? Center(
+                          child: Text(
+                            _errorCarga!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        )
+                      : _citasDisponibles.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No hay turnos disponibles para esta especialidad.',
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _citasDisponibles.length,
+                              itemBuilder: (context, index) {
+                                final cita = _citasDisponibles[index];
+                                final medicoNombre = _texto(
+                                  cita['medico_nombre'],
+                                  'Personal médico',
+                                );
+                                final especialidad =
+                                    _texto(cita['especialidad']);
+                                final fechaHora = _texto(cita['fecha_hora']);
+                                final citaId =
+                                    cita['cita_id']?.toString() ?? '';
+
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Row(
+                                      children: [
+                                        const CircleAvatar(
+                                          backgroundColor: Color(0xFFE1F5FE),
+                                          child: Icon(
+                                            Icons.medical_services,
+                                            color: _colorVerdeInstitucional,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                medicoNombre,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Especialidad: $especialidad',
+                                                style: const TextStyle(
+                                                    color: Colors.black54),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Fecha y Hora: $fechaHora',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  color:
+                                                      _colorVerdeInstitucional,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        FilledButton(
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor:
+                                                _colorVerdeInstitucional,
+                                          ),
+                                          onPressed:
+                                              _reservando || citaId.isEmpty
+                                                  ? null
+                                                  : () => _reservarCita(citaId),
+                                          child: const Text('Reservar'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  String _texto(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    return text.isEmpty ? fallback : text;
   }
 }

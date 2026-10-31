@@ -26,7 +26,7 @@ class ApiClient {
                 const String.fromEnvironment(
                   'API_BASE_URL',
                   defaultValue:
-                      'http://localhost:3000/api', // Configurado para adb reverse en dispositivo físico
+                      'http://192.168.40.170:3000/api', // Actualizado para red Wi-Fi local
                 ))
             .replaceFirst(RegExp(r'/$'), '');
 
